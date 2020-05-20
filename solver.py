@@ -31,6 +31,7 @@ class PINN:
         self.cond_c = cond_c
         self.cfg = cfg
 
+    
     def train(self):
 
         criterion = tf.keras.losses.MeanSquaredError()
@@ -41,23 +42,31 @@ class PINN:
             loss = criterion(y, preds)
             return loss
 
-        @tf.function
+        #@tf.function
+        #@tf.autograph.experimental.do_not_convert
         def train_step():
 
             with tf.GradientTape() as tape:
-
+                tape.watch(self.network.trainable_variables)
                 Xc = tf.concat([self.xc, self.yc], 1)
-                U_net, U_net_dt = self.pde(self.network, Xc, self.cfg)
-                loss1 = criterion(U_net, U_net_dt)
-                
-                Xb = tf.concat([self.xb, self.yb], 1)
-                Uc = self.network(Xb)
-                loss2 = criterion(Uc, self.ub)
+                Xc = self.preprocess(Xc)
+                U_net = self.pde(self.network, Xc, self.cfg)
+                #U_net = self.net_U0()
+                uc_ = np.broadcast_to(self.uc, U_net.shape)
+                #loss1 = tf.reduce_sum(tf.square(self.uc - U_net))
+                loss1 = tf.reduce_sum(tf.square(uc_ - U_net))
 
-                print('loss1', loss1)
-                print('loss2', loss2)
+                Xb = tf.concat([self.xb, self.yb], 1)
+                Xb = self.preprocess(Xb)
+                Ub = self.network(Xb)
+                #loss2 = criterion(self.ub, Ub)
+                loss2 = tf.reduce_sum(tf.square(self.ub - Ub))
+
+                #print('loss1', loss1)
+                #print('loss2', loss2)
 
                 loss_total = loss1 + loss2
+                #loss_total = loss2
 
             grads = tape.gradient(loss_total, self.network.trainable_variables)
             optimizer.apply_gradients(zip(grads, self.network.trainable_variables))
@@ -76,7 +85,8 @@ class PINN:
 
 
     def predict(self, X):
-        return self.network(X)
+        Xc = self.preprocess(X)
+        return self.network(Xc)
 
     def get_collocations(self):
 
@@ -85,8 +95,14 @@ class PINN:
         self.xb = tf.convert_to_tensor(sp_b[:, 0][:, None])
         self.yb = tf.convert_to_tensor(sp_b[:, 1][:, None])
         
-
         sp_c, uc = self.cond_c.generate()
         self.uc = uc[:, None]
         self.xc = tf.convert_to_tensor(sp_c[:, 0][:, None])
         self.yc = tf.convert_to_tensor(sp_c[:, 1][:, None])
+
+    def preprocess(self, X):
+        self.bound_l = 0.
+        self.bound_u = 1.
+        #H = 2.0*(X - self.bound_l)/(self.bound_u - self.bound_l) - 1.0
+        H = 2.0*(X - self.bound_l)/(self.bound_u - self.bound_l) - 2.0
+        return H

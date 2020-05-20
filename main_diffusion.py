@@ -9,6 +9,8 @@ import network
 import condition
 
 
+
+
 def make_solution(xy, t, func):
     x = xy[0]
     y = xy[1]
@@ -72,55 +74,20 @@ def translate_func_2d(func):
 
 
 
-
-def net_U0(model, X, constant):
-
-    x = X[:, 0][:, tf.newaxis]
-    y = X[:, 1][:, tf.newaxis]
-    #X = tf.concat([x, y], 1)
-    #X = self.preprocess(X)
-    with tf.GradientTape() as t:
-        with tf.GradientTape() as t2:
-            with tf.GradientTape() as t3:
-                with tf.GradientTape() as t4:
-                    t.watch(x)
-                    t2.watch(x)
-                    t3.watch(y)
-                    t4.watch(y)
-                    X = tf.concat([x, y], 1)
-                    U_net = model(X)# N x (q+1)
-                    U = U_net[:, :-1]# (N, q+1) -> (N, q)
-                U_y = t4.gradient(U, y)
-            U_yy = t3.gradient(U_y, y)
-        U_x = t2.gradient(U, x)
-    U_xx = t.gradient(U_x, x)
-    
-    #C = constant['C']
-    D = constant['D']
-    IRK = constant['IRK']
-    dt = constant['dt']
-    #F = - c * (U_x + U_y) + D * (U_xx + U_yy)
-    F = D * (U_xx + U_yy)
-
-    print(U.shape, U_x.shape, U_y.shape)
-    print(U_xx.shape, U_yy.shape)#(250, 1) (250, 1)
-    print(F.shape, U_net.shape, IRK.shape)#(250, 1) (250, 501) (501, 500)
-
-    #prediction of U0 using Runge-Kutta
-    U0_pde = U_net - dt * tf.matmul(F, IRK.T)# (N, q) * (q+1, q)T -> (N, q+1)
-    return U0_pde
+def get_times(q, dt):
+    tmp = np.float32(np.loadtxt('./IRK/Butcher_IRK%d.txt' % (q), ndmin = 2))
+    weights = np.reshape(tmp[0:q**2+q], (q+1,q))
+    times = dt * tmp[q**2+q:]
+    times = np.array([0.] + times[:, 0].tolist())[:, None]
+    return weights.T, times
 
 
-
-#dummy = np.ones((x.shape[0], 500)).astype(np.float32)
-#def fwd_gradients_x0(U, x, dummy):        
-#    g = tf.gradients(U, x, grad_ys=dummy)[0]
-#    return tf.gradients(g, dummy)[0]
-
-def net_U0(model, X, constant):
-
-    x = X[:, 0][:, tf.newaxis]
-    y = X[:, 1][:, tf.newaxis]
+#@tf.function
+def net_U0(model, Xc, cfg):
+    #Xc = tf.concat([self.xc, self.yc], 1)
+    #Xc = self.preprocess(Xc)
+    x = Xc[:, 0][:, tf.newaxis]
+    y = Xc[:, 1][:, tf.newaxis]
     with tf.GradientTape() as g1, tf.GradientTape() as g2:
         with tf.GradientTape() as g3, tf.GradientTape() as g4:
             g1.watch(x)
@@ -128,92 +95,48 @@ def net_U0(model, X, constant):
             g3.watch(y)
             g4.watch(y)
             X = tf.concat([x, y], 1)
-            U_net = model(X)# N x (q+1)
-            U = U_net[:, :-1]# (N, q+1) -> (N, q)
+            U_net = model(X)
+            U = U_net[:, :-1]
+
+    U_y = g3.batch_jacobian(U, y)[:, :, 0]
+    U_yy = g4.batch_jacobian(U_y, y)[:, :, 0]
     U_x = g1.batch_jacobian(U, x)[:, :, 0]
     U_xx = g2.batch_jacobian(U_x, x)[:, :, 0]
-    U_y = g1.batch_jacobian(U, y)[:, :, 0]
-    U_yy = g2.batch_jacobian(U_y, y)[:, :, 0]
-
-    #C = constant['C']
-    D = constant['D']
-    IRK = constant['IRK']
-    dt = constant['dt']
-    #F = - c * (U_x + U_y) + D * (U_xx + U_yy)
-    F = D * (U_xx + U_yy)
-
-    #print(U.shape, U_x.shape, U_y.shape)#(250, 500) (250, 500) (250, 500)
-    #print(U_xx.shape, U_yy.shape)#(250, 500) (250, 500)
-    #print(F.shape, U_net.shape, IRK.shape)#(250, 500) (250, 501) (501, 500)
-    #prediction of U0 using Runge-Kutta
-    #U0_pde = U_net - dt * tf.matmul(F, IRK.T)# (N, q) * (q+1, q)T -> (N, q+1)
-
-    U_net_dt = dt * tf.matmul(F, IRK.T)
-    return U_net, U_net_dt
-
-
-def net_U1(model, X, constant):
-
-    x = X[:, 0][:, tf.newaxis]
-    y = X[:, 1][:, tf.newaxis]
-    X = tf.concat([x, y], 1)
-    U_net = model(X)# N x (q+1)
-    U = U_net[:, :-1]# (N, q+1) -> (N, q)
-
-    dummy = np.ones((x.shape[0], U_net.shape[1]+1))
-    def fwd_gradients_x0(self, U, x):
-        g = tf.gradients(U, x, grad_ys=dummy)[0]
-        return tf.gradients(g, dummy)[0]
-
+            
+    print(U_xx)
+    #C = cfg['C']
+    D = cfg['D']
+    IRK = cfg['IRK']
+    dt = cfg['dt']
     
-    U_x = fwd_gradients_x0(U, x, dummy)
-    #U_y = tf.gradients(U, y, dummy)
-    #U_xx = tf.gradients(U_x, x, dummy)
-    #U_yy = tf.gradients(U_y, y, dummy)
-
-    #C = constant['C']
-    D = constant['D']
-    IRK = constant['IRK']
-    dt = constant['dt']
+    
     #F = - c * (U_x + U_y) + D * (U_xx + U_yy)
     F = D * (U_xx + U_yy)
-
-    print(U.shape, U_x.shape, U_y.shape)
-    print(U_xx.shape, U_yy.shape)#(250, 1) (250, 1)
-    print(F.shape, U_net.shape, IRK.shape)#(250, 1) (250, 501) (501, 500)
-
-    #prediction of U0 using Runge-Kutta
     #U0_pde = U_net - dt * tf.matmul(F, IRK.T)# (N, q) * (q+1, q)T -> (N, q+1)
-    #return U0_pde
-
-    U_net_dt = dt * tf.matmul(F, IRK.T)
-    return U_net, U_net_dt
+    U0_pde = U_net - dt * tf.matmul(F, IRK)# (N, q) * (q+1, q)T -> (N, q+1)
+    return U0_pde
 
 
-def get_times(q, dt):
-    tmp = np.float32(np.loadtxt('./IRK/Butcher_IRK%d.txt' % (q), ndmin = 2))
-    weights = np.reshape(tmp[0:q**2+q], (q+1,q))
-    times = dt * tmp[q**2+q:]
-    times = np.array([0.] + times[:, 0].tolist())[:, None]
-    return weights, times
 
 def main1():
 
-    setting = {}
-    setting['epoch'] = 1000
-    setting['c'] = c = 0.0
-    setting['D'] = D = 8.0
-    setting['dt'] = dt = 1e-3
+    cfg = {}
+    cfg['epoch'] = 50000
+    N0 = 250
+    Nb = 200
+    #cfg['dt'] = dt = 1e-3
+    cfg['dt'] = dt = 1e-3
+    cfg['q'] = q = 500
 
-    setting['q'] = q = 500
-    setting['IRK'], setting['IRK_time'] = get_times(q, dt)
-    t = setting['IRK_time']
+    cfg['c'] = c = 0.0
+    cfg['D'] = D = 8.0
+    cfg['IRK'], cfg['IRK_time'] = get_times(q, dt)
 
+    print('IRK', cfg['IRK'])
     func = func2(c, D)
     func_init = translate_func_2d(func)
 
-    N0 = 250
-    Nb = 200
+    
 
     #wiki
     upper = 1.0
@@ -233,34 +156,25 @@ def main1():
     cond_0 = condition.dirichlet(shapes_i, func_init, N0, 1)
 
 
-    
-    x_step = 4e-3
-    q = 500
     layers = [2, 50, 50, 50, 50, 50, 50, q+1]
-
-
     net = network.get_linear(layers)
     #mdl = pde.PINN_Diffusion
     #main1 = main1_2d
 
-    
-
-    pinn = solver.PINN(net_U0, net, cond_b, cond_0, setting)
+    pinn = solver.PINN(net_U0, net, cond_b, cond_0, cfg)
+    #print(pinn.network.weights)
     pinn.train()
+    #print(pinn.network.weights)
 
     N_test = 200
     xy = space_test.sampling_diagonal(N_test)
     x_test = xy[:, 0][:, None]
     y_test = xy[:, 1][:, None]
 
-    y_true = make_solution([x_test, y_test], t, func)
+    y_true = make_solution([x_test, y_test], cfg['IRK_time'], func)
     y_pred = np.copy(y_true)
-
     y_pred = make_predict(x_test, y_test, pinn)
-
     print(y_true.shape, y_pred.shape)
-
-
 
     y_abs_max = np.max(np.abs(y_true))
     #y_true_max = np.max(y_true) - 0.2
@@ -277,6 +191,7 @@ def main1():
         #print('t', t[loop])
         #y_true = main2([x_test, y_test], t[loop], func)
         #y_pred = np.copy(y_true)
+        #print(np.sum(np.abs(y_pred[loop] - y_pred[loop+50])))
 
         pl.clf()
 
@@ -298,7 +213,7 @@ def main1():
         #pl.show()
 
         fname = str(loop)
-        fname = '0' * (5 - len(fname)) + fname + '.jpg'
+        fname = './result/' + '0' * (5 - len(fname)) + fname + '.png'
         pl.savefig(fname)
 
         
