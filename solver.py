@@ -44,7 +44,7 @@ class PINN:
 
         #
         #@tf.autograph.experimental.do_not_convert
-        @tf.function
+        #@tf.function
         def train_step():
 
             with tf.GradientTape() as tape:
@@ -53,9 +53,10 @@ class PINN:
                 Xc = self.preprocess(Xc)
                 U_net = self.pde(self.network, Xc, self.cfg)
                 #U_net = self.net_U0()
-                uc_ = np.broadcast_to(self.uc, U_net.shape)
-                #loss1 = tf.reduce_sum(tf.square(self.uc - U_net))
-                loss1 = tf.reduce_sum(tf.square(uc_ - U_net))
+                
+                loss1 = tf.reduce_sum(tf.square(self.uc - U_net))
+                #uc_ = np.broadcast_to(self.uc, U_net.shape)
+                #loss1 = tf.reduce_sum(tf.square(uc_ - U_net))
 
                 Xb = tf.concat([self.xb, self.yb], 1)
                 Xb = self.preprocess(Xb)
