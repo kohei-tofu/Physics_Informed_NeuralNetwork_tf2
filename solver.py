@@ -31,7 +31,6 @@ class PINN:
         self.cond_c = cond_c
         self.cfg = cfg
 
-    
     def train(self):
 
         criterion = tf.keras.losses.MeanSquaredError()
@@ -49,11 +48,9 @@ class PINN:
 
             with tf.GradientTape() as tape:
                 tape.watch(self.network.trainable_variables)
-                Xc = tf.concat([self.xc, self.yc], 1)
-                Xc = self.preprocess(Xc)
-                U_net = self.pde(self.network, Xc, self.cfg)
-                #U_net = self.net_U0()
                 
+                U_net = self.pde()
+                #U_net = self.net_U0()
                 loss1 = tf.reduce_sum(tf.square(self.uc - U_net))
                 #uc_ = np.broadcast_to(self.uc, U_net.shape)
                 #loss1 = tf.reduce_sum(tf.square(uc_ - U_net))

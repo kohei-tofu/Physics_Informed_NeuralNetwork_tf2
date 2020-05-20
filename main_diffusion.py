@@ -136,10 +136,10 @@ def net_U0(model, Xc, cfg):
         U_y = g2.batch_jacobian(U, y)[:, :, 0]
     U_xx = g3.batch_jacobian(U_x, x)[:, :, 0]
     U_yy = g4.batch_jacobian(U_y, y)[:, :, 0]        
-    print(U_y, U_y.shape, 'U_y')
-    print(U_x, U_x.shape, 'U_x')
-    print(U_yy, U_yy.shape, 'U_yy')
-    print(U_xx, U_xx.shape, 'U_xx')
+    #print(U_y, U_y.shape, 'U_y')
+    #print(U_x, U_x.shape, 'U_x')
+    #print(U_yy, U_yy.shape, 'U_yy')
+    #print(U_xx, U_xx.shape, 'U_xx')
     #C = cfg['C']
     D = cfg['D']
     IRK = cfg['IRK']
