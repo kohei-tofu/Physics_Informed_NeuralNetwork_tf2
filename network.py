@@ -12,12 +12,14 @@ def get_linear(layer_list):
     model = tf.keras.Sequential()
     model.add(tf.keras.layers.Dense(layer_list[1], \
                                     input_shape = (layer_list[0],),\
-                                    activation = 'tanh'))
+                                    activation = 'tanh',\
+                                    kernel_initializer='glorot_uniform'))
 
-    for l in range(2, num_layers - 2):
+    for l in range(1, num_layers - 2):
         model.add(tf.keras.layers.Dense(layer_list[l+1], \
-                                        activation='tanh',\
+                                        activation=tf.keras.layers.Activation('tanh'),\
                                         kernel_initializer='glorot_uniform'))
+        #model.add(tf.keras.activations.tanh)
 
     model.add(tf.keras.layers.Dense(layer_list[-1], \
                                     activation=None,\

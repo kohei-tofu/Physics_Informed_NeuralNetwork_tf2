@@ -83,7 +83,7 @@ def get_times(q, dt):
 
 
 #@tf.function
-def net_U0(model, Xc, cfg):
+def net_U1(model, Xc, cfg):
     #Xc = tf.concat([self.xc, self.yc], 1)
     #Xc = self.preprocess(Xc)
     x = Xc[:, 0][:, tf.newaxis]
@@ -103,7 +103,6 @@ def net_U0(model, Xc, cfg):
     U_x = g1.batch_jacobian(U, x)[:, :, 0]
     U_xx = g2.batch_jacobian(U_x, x)[:, :, 0]
             
-    print(U_xx)
     #C = cfg['C']
     D = cfg['D']
     IRK = cfg['IRK']
@@ -117,13 +116,49 @@ def net_U0(model, Xc, cfg):
     return U0_pde
 
 
+@tf.function
+def net_U0(model, Xc, cfg):
+    #Xc = tf.concat([self.xc, self.yc], 1)
+    #Xc = self.preprocess(Xc)
+    x = Xc[:, 0][:, tf.newaxis]
+    y = Xc[:, 1][:, tf.newaxis]
+
+    with tf.GradientTape() as g3, tf.GradientTape() as g4:
+        with tf.GradientTape() as g1, tf.GradientTape() as g2:
+            g1.watch(x)
+            g2.watch(y)
+            g3.watch(x)
+            g4.watch(y)
+            X = tf.concat([x, y], 1)
+            U_net = model(X)
+            U = U_net[:, :-1]
+        U_x = g1.batch_jacobian(U, x)[:, :, 0]
+        U_y = g2.batch_jacobian(U, y)[:, :, 0]
+    U_xx = g3.batch_jacobian(U_x, x)[:, :, 0]
+    U_yy = g4.batch_jacobian(U_y, y)[:, :, 0]        
+    print(U_y, U_y.shape, 'U_y')
+    print(U_x, U_x.shape, 'U_x')
+    print(U_yy, U_yy.shape, 'U_yy')
+    print(U_xx, U_xx.shape, 'U_xx')
+    #C = cfg['C']
+    D = cfg['D']
+    IRK = cfg['IRK']
+    dt = cfg['dt']
+    
+    
+    #F = - c * (U_x + U_y) + D * (U_xx + U_yy)
+    F = D * (U_xx + U_yy)
+    #U0_pde = U_net - dt * tf.matmul(F, IRK.T)# (N, q) * (q+1, q)T -> (N, q+1)
+    U0_pde = U_net - dt * tf.matmul(F, IRK)# (N, q) * (q+1, q)T -> (N, q+1)
+    return U0_pde
+
 
 def main1():
 
     cfg = {}
     cfg['epoch'] = 50000
     N0 = 250
-    Nb = 200
+    Nb = 50
     #cfg['dt'] = dt = 1e-3
     cfg['dt'] = dt = 1e-3
     cfg['q'] = q = 500
@@ -156,7 +191,8 @@ def main1():
     cond_0 = condition.dirichlet(shapes_i, func_init, N0, 1)
 
 
-    layers = [2, 50, 50, 50, 50, 50, 50, q+1]
+    #layers = [2, 50, 50, 50, 50, 50, 50, q+1]
+    layers = [2, 50, 50, 50, q+1]
     net = network.get_linear(layers)
     #mdl = pde.PINN_Diffusion
     #main1 = main1_2d

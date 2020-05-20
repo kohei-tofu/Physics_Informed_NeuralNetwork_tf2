@@ -42,8 +42,9 @@ class PINN:
             loss = criterion(y, preds)
             return loss
 
-        #@tf.function
+        #
         #@tf.autograph.experimental.do_not_convert
+        @tf.function
         def train_step():
 
             with tf.GradientTape() as tape:
