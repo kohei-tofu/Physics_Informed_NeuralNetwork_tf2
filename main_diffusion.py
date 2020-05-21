@@ -7,8 +7,14 @@ import solver
 import sampler
 import network
 import condition
+from tensorflow.keras import optimizers
 
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
+tf.random.set_seed(22)
+np.random.seed(22) 
+assert tf.__version__.startswith('2.')
 
 
 def make_solution(xy, t, func):
@@ -83,40 +89,6 @@ def get_times(q, dt):
 
 
 #@tf.function
-def net_U1(model, Xc, cfg):
-    #Xc = tf.concat([self.xc, self.yc], 1)
-    #Xc = self.preprocess(Xc)
-    x = Xc[:, 0][:, tf.newaxis]
-    y = Xc[:, 1][:, tf.newaxis]
-    with tf.GradientTape() as g1, tf.GradientTape() as g2:
-        with tf.GradientTape() as g3, tf.GradientTape() as g4:
-            g1.watch(x)
-            g2.watch(x)
-            g3.watch(y)
-            g4.watch(y)
-            X = tf.concat([x, y], 1)
-            U_net = model(X)
-            U = U_net[:, :-1]
-
-    U_y = g3.batch_jacobian(U, y)[:, :, 0]
-    U_yy = g4.batch_jacobian(U_y, y)[:, :, 0]
-    U_x = g1.batch_jacobian(U, x)[:, :, 0]
-    U_xx = g2.batch_jacobian(U_x, x)[:, :, 0]
-            
-    #C = cfg['C']
-    D = cfg['D']
-    IRK = cfg['IRK']
-    dt = cfg['dt']
-    
-    
-    #F = - c * (U_x + U_y) + D * (U_xx + U_yy)
-    F = D * (U_xx + U_yy)
-    #U0_pde = U_net - dt * tf.matmul(F, IRK.T)# (N, q) * (q+1, q)T -> (N, q+1)
-    U0_pde = U_net - dt * tf.matmul(F, IRK)# (N, q) * (q+1, q)T -> (N, q+1)
-    return U0_pde
-
-
-@tf.function
 def net_U0(model, Xc, cfg):
     #Xc = tf.concat([self.xc, self.yc], 1)
     #Xc = self.preprocess(Xc)
@@ -124,22 +96,23 @@ def net_U0(model, Xc, cfg):
     y = Xc[:, 1][:, tf.newaxis]
 
     with tf.GradientTape() as g3, tf.GradientTape() as g4:
+        g3.watch(x)
+        g4.watch(y)
         with tf.GradientTape() as g1, tf.GradientTape() as g2:
             g1.watch(x)
             g2.watch(y)
-            g3.watch(x)
-            g4.watch(y)
             X = tf.concat([x, y], 1)
             U_net = model(X)
             U = U_net[:, :-1]
         U_x = g1.batch_jacobian(U, x)[:, :, 0]
         U_y = g2.batch_jacobian(U, y)[:, :, 0]
+        print(U_x, U_x.shape, 'U_x')
+        print(U_y, U_y.shape, 'U_y')
     U_xx = g3.batch_jacobian(U_x, x)[:, :, 0]
-    U_yy = g4.batch_jacobian(U_y, y)[:, :, 0]        
-    #print(U_y, U_y.shape, 'U_y')
-    #print(U_x, U_x.shape, 'U_x')
-    #print(U_yy, U_yy.shape, 'U_yy')
-    #print(U_xx, U_xx.shape, 'U_xx')
+    U_yy = g4.batch_jacobian(U_y, y)[:, :, 0]
+    print(U_xx, U_xx.shape, 'U_xx')
+    print(U_yy, U_yy.shape, 'U_yy')
+    
     #C = cfg['C']
     D = cfg['D']
     IRK = cfg['IRK']
@@ -155,18 +128,42 @@ def net_U0(model, Xc, cfg):
 
 def main1():
 
+    #tf.config.list_physical_devices('GPU')
     cfg = {}
-    cfg['epoch'] = 50000
+    cfg['epoch'] = 20000
     N0 = 250
     Nb = 50
-    #cfg['dt'] = dt = 1e-3
-    cfg['dt'] = dt = 1e-3
+    N0 = 25
+    Nb = 5
+    
+    #cfg['dt'] 
+    # = dt = 1e-3
+    cfg['dt'] = dt = 1e-4
     cfg['q'] = q = 500
+    cfg['q'] = q = 20
+    cfg['q'] = q = 100
+
+    #layers = [2, 50, 50, 50, 50, 50, 50, q+1]
+    #layers = [2, 50, 50, 50, 50,  q+1]
+    layers = [2, 50, 50, 50, 50, 50, q+1]
+    #layers = [2, 50, 50, 50, q+1]
+    net = network.get_linear(layers)
+    
+    def scheduler_step(epoch):
+        if epoch < 300:
+            return 1e-2
+        if epoch >= 300 and epoch < 1000:
+            return 1e-3
+        else:
+            return 1e-4
+
+    cfg['optimizer'] = optimizers.Adam(learning_rate=scheduler_step(0))
+    #cfg['optimizer'] = optimizers.SGD(learning_rate=scheduler_step(0), momentum=0.9)
+    cfg['scheduler'] = scheduler_step
 
     cfg['c'] = c = 0.0
     cfg['D'] = D = 8.0
     cfg['IRK'], cfg['IRK_time'] = get_times(q, dt)
-
     print('IRK', cfg['IRK'])
     func = func2(c, D)
     func_init = translate_func_2d(func)
@@ -191,9 +188,7 @@ def main1():
     cond_0 = condition.dirichlet(shapes_i, func_init, N0, 1)
 
 
-    #layers = [2, 50, 50, 50, 50, 50, 50, q+1]
-    layers = [2, 50, 50, 50, q+1]
-    net = network.get_linear(layers)
+    
     #mdl = pde.PINN_Diffusion
     #main1 = main1_2d
 
@@ -221,8 +216,12 @@ def main1():
     print('y_ErrMax', y_ErrMax)
 
     import pylab as pl
+    import shutil
+    shutil.rmtree('./result/')
+
     pl.figure()
-    for loop in range(0, 500, 50):
+    #for loop in range(0, 500, 50):
+    for loop in range(0, q, q//5):
 
         #print('t', t[loop])
         #y_true = main2([x_test, y_test], t[loop], func)

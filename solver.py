@@ -31,19 +31,19 @@ class PINN:
         self.cond_c = cond_c
         self.cfg = cfg
 
+        self.get_collocations()
+        
     def train(self):
 
         criterion = tf.keras.losses.MeanSquaredError()
-        optimizer = optimizers.Adam(learning_rate=1e-2)
+        optimizer = self.cfg['optimizer']
         train_loss = metrics.Mean()
         
         def compute_loss(y, preds):
             loss = criterion(y, preds)
             return loss
 
-        #
-        #@tf.autograph.experimental.do_not_convert
-        #@tf.function
+        @tf.function
         def train_step():
 
             with tf.GradientTape() as tape:
@@ -74,8 +74,13 @@ class PINN:
             train_loss(loss_total)
 
         for epoch in range(1, self.cfg['epoch'] + 1):
+            
+            lr = self.cfg['scheduler'](epoch)
+            if lr is not None:
+                optimizer.lr = lr
 
-            self.get_collocations()
+            if epoch % 10 == 0:
+                self.get_collocations()
 
             train_step()
 
@@ -92,14 +97,15 @@ class PINN:
     def get_collocations(self):
 
         sp_b, ub = self.cond_b.generate()
-        self.ub = ub[:, None]
-        self.xb = tf.convert_to_tensor(sp_b[:, 0][:, None])
-        self.yb = tf.convert_to_tensor(sp_b[:, 1][:, None])
-        
         sp_c, uc = self.cond_c.generate()
-        self.uc = uc[:, None]
-        self.xc = tf.convert_to_tensor(sp_c[:, 0][:, None])
-        self.yc = tf.convert_to_tensor(sp_c[:, 1][:, None])
+        #with tf.device("GPU:0"):
+        if True:
+            self.ub = tf.convert_to_tensor(ub[:, None])
+            self.xb = tf.convert_to_tensor(sp_b[:, 0][:, None])
+            self.yb = tf.convert_to_tensor(sp_b[:, 1][:, None])
+            self.uc = tf.convert_to_tensor(uc[:, None])
+            self.xc = tf.convert_to_tensor(sp_c[:, 0][:, None])
+            self.yc = tf.convert_to_tensor(sp_c[:, 1][:, None])
 
     def preprocess(self, X):
         self.bound_l = 0.
