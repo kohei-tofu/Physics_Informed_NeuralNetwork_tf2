@@ -23,15 +23,17 @@ class Config:
         
 class PINN:
 
-    def __init__(self, pde, network, cond_b, cond_c, cfg):
+    #def __init__(self, pde, network, cond_b, cond_c, cfg):
+    def __init__(self, pde, cond_b, cond_c, cfg):
 
         self.pde = pde
-        self.network = network
+        self.network = cfg['network']
         self.cond_b = cond_b
         self.cond_c = cond_c
         self.cfg = cfg
-
-        self.get_collocations()
+        if self.cond_b is not None and self.cond_c is not None:
+        #if True:
+            self.get_collocations()
         
     def train(self):
 
@@ -113,3 +115,6 @@ class PINN:
         #H = 2.0*(X - self.bound_l)/(self.bound_u - self.bound_l) - 1.0
         H = 2.0*(X - self.bound_l)/(self.bound_u - self.bound_l) - 2.0
         return H
+
+    def save(self, path2save):
+        self.network.save(path2save)

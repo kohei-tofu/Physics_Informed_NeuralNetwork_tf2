@@ -17,10 +17,11 @@ def get_linear(layer_list):
 
     for l in range(1, num_layers - 2):
         model.add(tf.keras.layers.Dense(layer_list[l+1], \
-                                        activation=tf.keras.layers.Activation('tanh'),\
+                                        activation='tanh',\
                                         kernel_initializer='glorot_uniform'))
         #model.add(tf.keras.activations.tanh)
 
+    #tf.keras.layers.Activation('tanh'),
     model.add(tf.keras.layers.Dense(layer_list[-1], \
                                     activation=None,\
                                     kernel_initializer='glorot_uniform'))

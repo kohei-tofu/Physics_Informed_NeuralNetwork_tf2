@@ -8,6 +8,7 @@ import sampler
 import network
 import condition
 from tensorflow.keras import optimizers
+from tensorflow import keras
 
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -126,50 +127,12 @@ def net_U0(model, Xc, cfg):
     return U0_pde
 
 
-def main1():
+def train(cfg):
 
-    #tf.config.list_physical_devices('GPU')
-    cfg = {}
-    cfg['epoch'] = 20000
-    N0 = 250
-    Nb = 50
-    N0 = 25
-    Nb = 5
-    
-    #cfg['dt'] 
-    # = dt = 1e-3
-    cfg['dt'] = dt = 1e-4
-    cfg['q'] = q = 500
-    cfg['q'] = q = 20
-    cfg['q'] = q = 100
-
-    #layers = [2, 50, 50, 50, 50, 50, 50, q+1]
-    #layers = [2, 50, 50, 50, 50,  q+1]
-    layers = [2, 50, 50, 50, 50, 50, q+1]
-    #layers = [2, 50, 50, 50, q+1]
-    net = network.get_linear(layers)
-    
-    def scheduler_step(epoch):
-        if epoch < 300:
-            return 1e-2
-        if epoch >= 300 and epoch < 1000:
-            return 1e-3
-        else:
-            return 1e-4
-
-    cfg['optimizer'] = optimizers.Adam(learning_rate=scheduler_step(0))
-    #cfg['optimizer'] = optimizers.SGD(learning_rate=scheduler_step(0), momentum=0.9)
-    cfg['scheduler'] = scheduler_step
-
-    cfg['c'] = c = 0.0
-    cfg['D'] = D = 8.0
-    cfg['IRK'], cfg['IRK_time'] = get_times(q, dt)
-    print('IRK', cfg['IRK'])
-    func = func2(c, D)
+    cfg['network'] = network.get_linear(cfg['layers'])
+    func = func2(cfg['c'], cfg['D'])
     func_init = translate_func_2d(func)
-
     
-
     #wiki
     upper = 1.0
     line1 = sampler.Line_AxisX_2d(0, 0, upper)
@@ -178,26 +141,28 @@ def main1():
     line4 = sampler.Line_AxisY_2d(upper, 0, upper)
     #cond_b = sampler.dirichlet([line1, line2, line3, line4], 0, Nb)
     shapes_b = sampler.object_shapes([line1, line2, line3, line4])
-    cond_b = condition.dirichlet(shapes_b, func_init, Nb, 1)
+    cond_b = condition.dirichlet(shapes_b, func_init, cfg['Nb'], 1)
     #cond_b = sampler.Nothing()
-
-
     space = sampler.Rectangle([0, 0], [1, 1], 1e-6)
-    space_test = sampler.Rectangle([0, 0], [1, 1], 0.0)
     shapes_i = sampler.object_shapes([space])
-    cond_0 = condition.dirichlet(shapes_i, func_init, N0, 1)
+    cond_0 = condition.dirichlet(shapes_i, func_init, cfg['N0'], 1)
 
-
-    
-    #mdl = pde.PINN_Diffusion
-    #main1 = main1_2d
-
-    pinn = solver.PINN(net_U0, net, cond_b, cond_0, cfg)
-    #print(pinn.network.weights)
+    pinn = solver.PINN(net_U0, cond_b, cond_0, cfg)
     pinn.train()
-    #print(pinn.network.weights)
+    pinn.save(cfg['path2save'])
+
+
+def evaluate(cfg):
+    
+    func = func2(cfg['c'], cfg['D'])
+    func_init = translate_func_2d(func)
+
+    cfg['network'] = keras.models.load_model(cfg['path2save'])
+    cfg['network'].summary()
+    pinn = solver.PINN(net_U0, None, None, cfg)
 
     N_test = 200
+    space_test = sampler.Rectangle([0, 0], [1, 1], 0.0)
     xy = space_test.sampling_diagonal(N_test)
     x_test = xy[:, 0][:, None]
     y_test = xy[:, 1][:, None]
@@ -215,13 +180,19 @@ def main1():
     y_ErrMax = np.max(np.abs(y_true - y_pred))+0.001
     print('y_ErrMax', y_ErrMax)
 
+
     import pylab as pl
     import shutil
-    shutil.rmtree('./result/')
+    path = './result'
+    if os.path.isdir(path):
+        shutil.rmtree(path + '/')
+        os.mkdir(path)
+    else:
+        os.mkdir(path)
 
     pl.figure()
     #for loop in range(0, 500, 50):
-    for loop in range(0, q, q//5):
+    for loop in range(0, cfg['q'], cfg['q']//5):
 
         #print('t', t[loop])
         #y_true = main2([x_test, y_test], t[loop], func)
@@ -251,7 +222,51 @@ def main1():
         fname = './result/' + '0' * (5 - len(fname)) + fname + '.png'
         pl.savefig(fname)
 
-        
+
+def main():
+    
+    cfg = {}
+    cfg['epoch'] = 2000
+    cfg['N0'] = 25
+    cfg['Nb'] = 5
+    cfg['dt'] = 1e-4
+    cfg['q'] = 500
+    cfg['q'] = 20
+    cfg['q'] = 100
+
+    cfg['c'] = c = 0.0
+    cfg['D'] = D = 8.0
+    cfg['IRK'], cfg['IRK_time'] = get_times(cfg['q'], cfg['dt'])
+    #cfg['path2save'] = './result/network.h5'
+    cfg['path2save'] = './model/network.h5'
+
+    #cfg['layers'] = [2, 50, 50, 50, 50, 50, 50, q+1]
+    #cfg['layers'] = [2, 50, 50, 50, 50,  q+1]
+    cfg['layers'] = [2, 50, 50, 50, 50, 50, cfg['q']+1]
+    #cfg['layers'] = [2, 50, 50, 50, q+1]
+    
+    
+    def scheduler_step(epoch):
+        if epoch < 300:
+            return 1e-2
+        if epoch >= 300 and epoch < 1000:
+            return 1e-3
+        else:
+            return 1e-4
+
+    cfg['optimizer'] = optimizers.Adam(learning_rate=scheduler_step(0))
+    #cfg['optimizer'] = optimizers.SGD(learning_rate=scheduler_step(0), momentum=0.9)
+    cfg['scheduler'] = scheduler_step
+    
+    #
+    #
+    #
+    train(cfg)
+    evaluate(cfg)
+
+
+
+
 if __name__ == '__main__':
 
     #np.random.seed(1234)
@@ -259,6 +274,6 @@ if __name__ == '__main__':
 
     print('start')
 
-    main1()
+    main()
 
     print('end')
