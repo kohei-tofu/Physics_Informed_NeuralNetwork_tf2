@@ -49,7 +49,9 @@ class PINN:
             with tf.GradientTape() as tape:
                 tape.watch(self.network.trainable_variables)
                 
-                U_net = self.pde()
+                Xc = tf.concat([self.xc, self.yc], 1)
+                Xc = self.preprocess(Xc)
+                U_net = self.pde(self.network, Xc, self.cfg)
                 #U_net = self.net_U0()
                 loss1 = tf.reduce_sum(tf.square(self.uc - U_net))
                 #uc_ = np.broadcast_to(self.uc, U_net.shape)
