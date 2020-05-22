@@ -9,12 +9,13 @@ def const(lr):
 
 def step(epoch_list, lr_list):
     def f(epoch):
-        for e, l in zip(epoch_list, lr_list):
-            ret = l
+        ret = lr_list[0]
+        for loop, e in enumerate(epoch_list):
             if epoch > e:
-                break 
+                ret = lr_list[loop + 1]
+            else:
+                break
         return ret
-
     return f
 
 def step0(epoch):

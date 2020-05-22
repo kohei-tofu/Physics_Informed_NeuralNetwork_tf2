@@ -196,7 +196,6 @@ def get_config1(args):
     cfg['c'] = c = 0.0
     cfg['D'] = D = 8.0
     cfg['solution'] = func1(cfg['c'], cfg['D'])
-    #cfg['cfg'] = func2(cfg['c'], cfg['D'])
 
     cfg['epoch'] = args.epoch
 
@@ -220,17 +219,17 @@ def get_config1(args):
 
     cfg['N0'] = 25000
     cfg['Nb'] = 20000
-    cfg['N0'] = 2500
+    cfg['N0'] = 200
     cfg['Nb'] = 200
-    cfg['dt'] = 1e-3
-    #cfg['dt'] = 1e-4
+    #cfg['dt'] = 1e-3
+    cfg['dt'] = 1e-4
     #cfg['q'] = 500
     #cfg['q'] = 20
     
     
     cfg['IRK'], cfg['IRK_time'] = util.get_times(cfg['q'], cfg['dt'])
     cfg['IRK'] = tf.constant(cfg['IRK'])
-    cfg['path2save'] = './result/diffusion/'
+    cfg['path2save'] = './result/diffusion_1/'
     cfg['fname_model'] = 'network.h5'
 
     path = './result/'
@@ -247,14 +246,13 @@ def get_config2(args):
     cfg = {}
     cfg['c'] = c = 0.0
     cfg['D'] = D = 8.0
-    cfg['solution'] = func1(cfg['c'], cfg['D'])
-    #cfg['cfg'] = func2(cfg['c'], cfg['D'])
+    cfg['solution'] = func2(cfg['c'], cfg['D'])
 
 
     cfg['epoch'] = args.epoch
 
     #scheduler = scheduler.step2
-    sch_function = scheduler.step1
+    sch_function = scheduler.step([2000, 4000], [1e-3, 1e-4, 1e-5])
     sch_function = scheduler.const(1e-4)
     #sch_function = scheduler.const(1e-5)
     #sch_function = scheduler.const(1e-2)
@@ -271,9 +269,7 @@ def get_config2(args):
     cfg['mode'] = 'fst'
     #cfg['mode'] = 'ctn'
 
-    cfg['N0'] = 25000
-    cfg['Nb'] = 20000
-    cfg['N0'] = 2500
+    cfg['N0'] = 200
     cfg['Nb'] = 200
     #cfg['dt'] = 1e-3
     #cfg['dt'] = 1e-4
@@ -284,7 +280,7 @@ def get_config2(args):
     
     cfg['IRK'], cfg['IRK_time'] = util.get_times(cfg['q'], cfg['dt'])
     cfg['IRK'] = tf.constant(cfg['IRK'])
-    cfg['path2save'] = './result/diffusion/'
+    cfg['path2save'] = './result/diffusion_2/'
     cfg['fname_model'] = 'network.h5'
 
     path = './result/'
@@ -309,7 +305,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     #
-    cfg = get_config1(args)
+    #cfg = get_config1(args)
+    cfg = get_config2(args)
    
     #
     print(args.job)
