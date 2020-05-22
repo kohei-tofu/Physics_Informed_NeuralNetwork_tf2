@@ -1,6 +1,4 @@
-
-
-
+import os
 import numpy as np
 import tensorflow as tf
 import solver
@@ -9,39 +7,13 @@ import network
 import condition
 from tensorflow.keras import optimizers
 from tensorflow import keras
+import util
 
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 tf.random.set_seed(22)
 np.random.seed(22) 
 assert tf.__version__.startswith('2.')
-
-
-def make_solution(xy, t, func):
-    x = xy[0]
-    y = xy[1]
-    dt = t[1, 0] - t[0, 0]
-    dx = x[1, 0] - x[0, 0]
-    X, Y, T = np.meshgrid(x, y, t)
-    T = T.flatten()[:, None]
-    X = X.flatten()[:, None]
-    Y = Y.flatten()[:, None]
-    U = func(X, Y, T)
-    print(U.shape)
-    umap = np.reshape(U, (x.shape[0], y.shape[0], t.shape[0]))
-    #umap = np.reshape(U, (t.shape[0], x.shape[0], y.shape[0]))
-    return umap
-
-def make_predict(x, y, model):
-
-    x_star, y_star = np.meshgrid(x, y)
-    x_star = x_star.flatten()[:, None]
-    y_star = y_star.flatten()[:, None]
-    X = np.concatenate((x_star, y_star), 1)
-    umap_pred = model.predict(X)
-    umap_pred = np.reshape(umap_pred, (x.shape[0], y.shape[0], model.cfg['q']+1))
-    return umap_pred
 
 
 
@@ -53,7 +25,10 @@ def func1(c, D):
 def func2(c, D):
     m = 3
     n = 4
-    l2 = D * ((m * np.pi)**2 + (n * np.pi)**2)
+    #l2 = (D**2) * ((m * np.pi)**2 + (n * np.pi)**2)
+    #l2 = D * ((m * np.pi / 1.)**2 + (n * np.pi / 1.)**2)
+    l2 = D * np.square(np.pi) * ((m / 1.)**2 + (n / 1.)**2)
+    #l2 = np.square(l2)
     f = lambda x, y, t : np.exp(-l2 * t) * np.sin(m * np.pi * x) * np.sin(n * np.pi * y)
     return f
 
@@ -77,59 +52,50 @@ def func3(c, D):
 def translate_func_2d(func):
     f = lambda ret : func(ret[:, 0], ret[:, 1], 0)
     return f
-
-
-
-
-def get_times(q, dt):
-    tmp = np.float32(np.loadtxt('./IRK/Butcher_IRK%d.txt' % (q), ndmin = 2))
-    weights = np.reshape(tmp[0:q**2+q], (q+1,q))
-    times = dt * tmp[q**2+q:]
-    times = np.array([0.] + times[:, 0].tolist())[:, None]
-    return weights.T, times
+    
 
 
 #@tf.function
-def net_U0(model, Xc, cfg):
+def net_U1(model, Xc, cfg):
     #Xc = tf.concat([self.xc, self.yc], 1)
     #Xc = self.preprocess(Xc)
     x = Xc[:, 0][:, tf.newaxis]
     y = Xc[:, 1][:, tf.newaxis]
+    dummy_x = tf.ones([Xc.shape[0], cfg['q']], dtype = np.float32)
+    dummy_y = tf.ones([Xc.shape[0], cfg['q']], dtype = np.float32)
 
-    with tf.GradientTape() as g3, tf.GradientTape() as g4:
-        g3.watch(x)
-        g4.watch(y)
-        with tf.GradientTape() as g1, tf.GradientTape() as g2:
-            g1.watch(x)
-            g2.watch(y)
-            X = tf.concat([x, y], 1)
-            U_net = model(X)
-            U = U_net[:, :-1]
-        U_x = g1.batch_jacobian(U, x)[:, :, 0]
-        U_y = g2.batch_jacobian(U, y)[:, :, 0]
-        print(U_x, U_x.shape, 'U_x')
-        print(U_y, U_y.shape, 'U_y')
-    U_xx = g3.batch_jacobian(U_x, x)[:, :, 0]
-    U_yy = g4.batch_jacobian(U_y, y)[:, :, 0]
-    print(U_xx, U_xx.shape, 'U_xx')
-    print(U_yy, U_yy.shape, 'U_yy')
-    
-    #C = cfg['C']
+    with tf.GradientTape(persistent=True) as tape:
+        tape.watch(x)
+        tape.watch(y)
+        tape.watch(dummy_x)
+        tape.watch(dummy_y)
+
+        X = tf.concat([x, y], 1)
+        U_net = model(X)
+        U = U_net[:, :-1]
+
+        Gx = tape.gradient(U, x, output_gradients=dummy_x)
+        Ux = tape.gradient(Gx, dummy_x)
+        GUx = tape.gradient(Ux, x, output_gradients=dummy_x)
+        Gy = tape.gradient(U, y, output_gradients=dummy_y)
+        Uy = tape.gradient(Gy, dummy_y)
+        GUy = tape.gradient(Uy, y, output_gradients=dummy_y)
+
+    Uxx = tape.gradient(GUx, dummy_x)
+    Uyy = tape.gradient(GUy, dummy_y)
     D = cfg['D']
     IRK = cfg['IRK']
     dt = cfg['dt']
-    
-    
-    #F = - c * (U_x + U_y) + D * (U_xx + U_yy)
-    F = D * (U_xx + U_yy)
-    #U0_pde = U_net - dt * tf.matmul(F, IRK.T)# (N, q) * (q+1, q)T -> (N, q+1)
+    F = D * (Uxx + Uyy)
     U0_pde = U_net - dt * tf.matmul(F, IRK)# (N, q) * (q+1, q)T -> (N, q+1)
     return U0_pde
 
 
 def train(cfg):
 
-    cfg['network'] = network.get_linear(cfg['layers'])
+    
+
+
     func = func2(cfg['c'], cfg['D'])
     func_init = translate_func_2d(func)
     
@@ -147,7 +113,8 @@ def train(cfg):
     shapes_i = sampler.object_shapes([space])
     cond_0 = condition.dirichlet(shapes_i, func_init, cfg['N0'], 1)
 
-    pinn = solver.PINN(net_U0, cond_b, cond_0, cfg)
+    #pinn = solver.PINN(net_U0, cond_b, cond_0, cfg)
+    pinn = solver.PINN(net_U1, cond_b, cond_0, cfg)
     pinn.train()
     pinn.save(cfg['path2save'])
 
@@ -157,9 +124,8 @@ def evaluate(cfg):
     func = func2(cfg['c'], cfg['D'])
     func_init = translate_func_2d(func)
 
-    cfg['network'] = keras.models.load_model(cfg['path2save'])
-    cfg['network'].summary()
-    pinn = solver.PINN(net_U0, None, None, cfg)
+    
+    pinn = solver.PINN(net_U1, None, None, cfg)
 
     N_test = 200
     space_test = sampler.Rectangle([0, 0], [1, 1], 0.0)
@@ -167,9 +133,9 @@ def evaluate(cfg):
     x_test = xy[:, 0][:, None]
     y_test = xy[:, 1][:, None]
 
-    y_true = make_solution([x_test, y_test], cfg['IRK_time'], func)
+    y_true = util.make_solution_2d([x_test, y_test], cfg['IRK_time'], func)
     y_pred = np.copy(y_true)
-    y_pred = make_predict(x_test, y_test, pinn)
+    y_pred = util.make_predict_2d(x_test, y_test, pinn)
     print(y_true.shape, y_pred.shape)
 
     y_abs_max = np.max(np.abs(y_true))
@@ -191,16 +157,9 @@ def evaluate(cfg):
         os.mkdir(path)
 
     pl.figure()
-    #for loop in range(0, 500, 50):
     for loop in range(0, cfg['q'], cfg['q']//5):
 
-        #print('t', t[loop])
-        #y_true = main2([x_test, y_test], t[loop], func)
-        #y_pred = np.copy(y_true)
-        #print(np.sum(np.abs(y_pred[loop] - y_pred[loop+50])))
-
         pl.clf()
-
         pl.subplot(131)
         pl.imshow(y_true[:, :, loop])
         pl.colorbar()
@@ -222,50 +181,47 @@ def evaluate(cfg):
         fname = './result/' + '0' * (5 - len(fname)) + fname + '.png'
         pl.savefig(fname)
 
-
-def main():
+import schdeuler
+def get_config1():
     
     cfg = {}
-    cfg['epoch'] = 2000
-    cfg['N0'] = 25
-    cfg['Nb'] = 5
-    cfg['dt'] = 1e-4
-    cfg['q'] = 500
-    cfg['q'] = 20
+    #cfg['epoch'] = 5000000
+    cfg['epoch'] = 300000
+
+
+    #scheduler = scheduler.step2
+    scheduler = scheduler.step1
+    #cfg['optimizer'] = optimizers.SGD(learning_rate=scheduler(0), momentum=0.9)
+    cfg['optimizer'] = optimizers.Adam(learning_rate=scheduler(0))
+    #cfg['optimizer'] = optimizers.Adamax(learning_rate=scheduler(0))
+    cfg['scheduler'] = scheduler
+
+    cfg['N0'] = 25000
+    cfg['Nb'] = 20000
+    cfg['N0'] = 2500
+    cfg['Nb'] = 200
+    cfg['dt'] = 1e-3
+    #cfg['dt'] = 1e-4
+    #cfg['q'] = 500
+    #cfg['q'] = 20
     cfg['q'] = 100
 
     cfg['c'] = c = 0.0
     cfg['D'] = D = 8.0
-    cfg['IRK'], cfg['IRK_time'] = get_times(cfg['q'], cfg['dt'])
+    cfg['IRK'], cfg['IRK_time'] = util.get_times(cfg['q'], cfg['dt'])
+    cfg['IRK'] = tf.constant(cfg['IRK'])
     #cfg['path2save'] = './result/network.h5'
     cfg['path2save'] = './model/network.h5'
 
-    #cfg['layers'] = [2, 50, 50, 50, 50, 50, 50, q+1]
-    #cfg['layers'] = [2, 50, 50, 50, 50,  q+1]
-    cfg['layers'] = [2, 50, 50, 50, 50, 50, cfg['q']+1]
-    #cfg['layers'] = [2, 50, 50, 50, q+1]
+    #cfg['layers'] = [2, 50, 50, cfg['q']+1]
+    cfg['layers'] = [2, 50, 50, 50, cfg['q']+1]
+    #cfg['layers'] = [2, 50, 50, 50, 50, 50, cfg['q']+1]
+    #cfg['layers'] = [2, 50, 50, 50, 50, 50, cfg['q']+1]
+    #cfg['mode'] = 'fst'
+    cfg['mode'] = 'ctn'
+
+    return cfg
     
-    
-    def scheduler_step(epoch):
-        if epoch < 300:
-            return 1e-2
-        if epoch >= 300 and epoch < 1000:
-            return 1e-3
-        else:
-            return 1e-4
-
-    cfg['optimizer'] = optimizers.Adam(learning_rate=scheduler_step(0))
-    #cfg['optimizer'] = optimizers.SGD(learning_rate=scheduler_step(0), momentum=0.9)
-    cfg['scheduler'] = scheduler_step
-    
-    #
-    #
-    #
-    train(cfg)
-    evaluate(cfg)
-
-
-
 
 if __name__ == '__main__':
 
@@ -274,6 +230,16 @@ if __name__ == '__main__':
 
     print('start')
 
-    main()
+    cfg = get_config1()
+    if cfg['mode'] == 'fst':
+        #cfg['network'] = network.get_linear(cfg['layers'])
+        cfg['network'] = network.get_linear2(cfg['layers'])
+    elif cfg['mode'] == 'ctn':
+        cfg['network'] = keras.models.load_model(cfg['path2save'])
+    cfg['network'].summary()
+
+    train(cfg)
+    
+    evaluate(cfg)
 
     print('end')
