@@ -207,20 +207,21 @@ def evaluate(cfg):
 
 
 import scheduler
-def get_config1():
+def get_config1(args):
     
     cfg = {}
     cfg['Re'] = 20
     cfg['solution'] = func_burgers2(cfg['Re'])
 
     #cfg['epoch'] = 5000000
-    cfg['epoch'] = 300000
-    cfg['mode'] = 'fst'
+    cfg['epoch'] = 40000
+    cfg['mode'] = args.mode
     #cfg['mode'] = 'ctn'
 
     #scheduler = scheduler.step2
     #sch_function = scheduler.step1
-    sch_function = scheduler.const(4e-3)
+    sch_function = scheduler.step([1000, 5000, 10000], [1e-2, 1e-3, 1e-4])
+    #sch_function = scheduler.const(4e-3)
 
     #cfg['optimizer'] = optimizers.SGD(learning_rate=scheduler(0), momentum=0.9)
     cfg['optimizer'] = optimizers.Adam(learning_rate=sch_function(0))
@@ -250,26 +251,40 @@ def get_config1():
 
 if __name__ == '__main__':
 
+    import argparse
     #np.random.seed(1234)
     #tf.set_random_seed(1234)
 
     print('start')
-
-    cfg = get_config1()
-    if cfg['mode'] == 'fst':
-        #cfg['network'] = network.get_linear(cfg['layers'])
-        cfg['network'] = network.get_linear2(cfg['layers'])
-    elif cfg['mode'] == 'ctn':
-        cfg['network'] = keras.models.load_model(cfg['path2save'] + cfg['fname_model'])
-    cfg['network'].summary()
-
-
-    """
-
-    """
-
-    train(cfg)
     
-    evaluate(cfg)
+    parser = argparse.ArgumentParser(description='solve 2d diffusion using neural netwrok')
+    parser.add_argument('--job', '-J', type=str, default='evaluate', required=True, help='what job are you going to do? train or evaluate')
+    parser.add_argument('--mode', '-M', type=str, default='ctn', help='what job are you going to do? train or evaluate')
+    args = parser.parse_args()
+
+    #
+    cfg = get_config1(args)
+   
+    #
+    if args.job == 'train':
+        print('train')
+        if cfg['mode'] == 'fst':
+            cfg['network'] = network.get_linear1(cfg['layers'])
+            #cfg['network'] = network.get_linear2(cfg['layers'])
+        elif cfg['mode'] == 'ctn':
+            cfg['network'] = keras.models.load_model(cfg['path2save'] + cfg['fname_model'])
+        cfg['network'].summary()
+
+        train(cfg)
+    
+    #
+    elif args.mode == 'evaluate':
+        print('evaluate')
+        print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1!!!!!!!!!!')
+        print(cfg['path2save'] + cfg['fname_model'])
+        cfg['network'] = keras.models.load_model(cfg['path2save'] + cfg['fname_model'])
+        cfg['network'].summary()
+
+        evaluate(cfg)
 
     print('end')

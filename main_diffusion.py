@@ -190,7 +190,7 @@ def evaluate(cfg):
 
 
 import scheduler
-def get_config1():
+def get_config1(args):
     
     cfg = {}
     cfg['c'] = c = 0.0
@@ -198,9 +198,7 @@ def get_config1():
     cfg['solution'] = func1(cfg['c'], cfg['D'])
     #cfg['cfg'] = func2(cfg['c'], cfg['D'])
 
-
-    #cfg['epoch'] = 5000000
-    cfg['epoch'] = 300000
+    cfg['epoch'] = args.epoch
 
     #scheduler = scheduler.step2
     sch_function = scheduler.step1
@@ -244,7 +242,7 @@ def get_config1():
     
 
 
-def get_config2():
+def get_config2(args):
     
     cfg = {}
     cfg['c'] = c = 0.0
@@ -253,8 +251,7 @@ def get_config2():
     #cfg['cfg'] = func2(cfg['c'], cfg['D'])
 
 
-    #cfg['epoch'] = 5000000
-    cfg['epoch'] = 300000
+    cfg['epoch'] = args.epoch
 
     #scheduler = scheduler.step2
     sch_function = scheduler.step1
@@ -278,8 +275,9 @@ def get_config2():
     cfg['Nb'] = 20000
     cfg['N0'] = 2500
     cfg['Nb'] = 200
-    cfg['dt'] = 1e-3
+    #cfg['dt'] = 1e-3
     #cfg['dt'] = 1e-4
+    cfg['dt'] = 1e-5
     #cfg['q'] = 500
     #cfg['q'] = 20
     
@@ -297,21 +295,40 @@ def get_config2():
     return cfg
 
 if __name__ == '__main__':
-
+    import argparse
     #np.random.seed(1234)
     #tf.set_random_seed(1234)
 
     print('start')
+    
 
-    cfg = get_config1()
-    if cfg['mode'] == 'fst':
-        cfg['network'] = network.get_linear2(cfg['layers'])
-    elif cfg['mode'] == 'ctn':
-        cfg['network'] = keras.models.load_model(cfg['path2save'] + cfg['fname_model'])
+    parser = argparse.ArgumentParser(description='solve 2d diffusion using neural netwrok')
+    parser.add_argument('--epoch', '-EPOCH', type=int, default=20000, help='epoch')
+    parser.add_argument('--job', '-J', type=str, default='evaluate', help='what job are you going to do? train or evaluate')
+    parser.add_argument('--mode', '-M', type=str, default='ctn', help='train from previous result')
+    args = parser.parse_args()
+
+    #
+    cfg = get_config1(args)
+   
+    #
+    print(args.job)
+    if args.job == 'train':
+        print('train')
+        if cfg['mode'] == 'fst':
+            cfg['network'] = network.get_linear1(cfg['layers'])
+            #cfg['network'] = network.get_linear2(cfg['layers'])
+        elif cfg['mode'] == 'ctn':
+            cfg['network'] = keras.models.load_model(cfg['path2save'] + cfg['fname_model'])
+        cfg['network'].summary()
+
+        train(cfg)
+    #
+    #elif args.mode == 'evaluate':
+    print('evaluate')
+    cfg['network'] = keras.models.load_model(cfg['path2save'] + cfg['fname_model'])
     cfg['network'].summary()
 
-    train(cfg)
-    
     evaluate(cfg)
 
     print('end')

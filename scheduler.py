@@ -6,15 +6,26 @@ def const(lr):
         return lr
     return func
 
+
+def step(epoch_list, lr_list):
+    def f(epoch):
+        for e, l in zip(epoch_list, lr_list):
+            ret = l
+            if epoch > e:
+                break 
+        return ret
+
+    return f
+
 def step0(epoch):
-    if epoch < 10000:
-        return 1e-1
-    elif epoch < 20000:
+    if epoch < 1000:
         return 1e-2
+    elif epoch < 5000:
+        return 4e-3
     elif epoch < 50000:
-        return 1e-3
-    else:
         return 1e-4
+    else:
+        return 1e-5
 
 def step1(epoch):
     if epoch < 1000:
