@@ -8,7 +8,8 @@ import condition
 from tensorflow.keras import optimizers
 from tensorflow import keras
 import util
-
+import pylab as pl
+import shutil
 #os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 tf.random.set_seed(22)
@@ -17,19 +18,29 @@ assert tf.__version__.startswith('2.')
 
 
 
-def func1(c, D):
-    f = lambda x, y, t : np.exp(- 2 * t) * np.sin(x) * np.sin(y)
+def func0(c, D):
+    f = lambda x, y, t : (np.exp(- 2 * t) * np.sin(x) * np.sin(y))[:, np.newaxis]
     return f
 
+def func1(c, D):
+    def f(x, y, t):
+        
+        l2 = D * np.square(np.pi) * (1 + 1)
+        u = np.exp(-l2 * t) * np.sin(np.pi * x) * np.sin(np.pi * y)
+        return u[:, np.newaxis]
+    return f
 
 def func2(c, D):
-    m = 3
-    n = 4
-    #l2 = (D**2) * ((m * np.pi)**2 + (n * np.pi)**2)
-    #l2 = D * ((m * np.pi / 1.)**2 + (n * np.pi / 1.)**2)
-    l2 = D * np.square(np.pi) * ((m / 1.)**2 + (n / 1.)**2)
-    #l2 = np.square(l2)
-    f = lambda x, y, t : np.exp(-l2 * t) * np.sin(m * np.pi * x) * np.sin(n * np.pi * y)
+    def f(x, y, t):
+        m = 3
+        n = 4
+        #l2 = (D**2) * ((m * np.pi)**2 + (n * np.pi)**2)
+        #l2 = D * ((m * np.pi / 1.)**2 + (n * np.pi / 1.)**2)
+        l2 = D * np.square(np.pi) * ((m / 1.)**2 + (n / 1.)**2)
+        u = np.exp(-l2 * t) * np.sin(m * np.pi * x) * np.sin(n * np.pi * y)
+        return u[:, np.newaxis]
+
+    #f = lambda x, y, t : np.exp(-l2 * t) * np.sin(m * np.pi * x) * np.sin(n * np.pi * y)
     return f
 
 
@@ -45,7 +56,7 @@ def func3(c, D):
                 l2 = D * ((m * np.pi)**2 + (n * np.pi)**2)
                 ret += A[i] * np.sin(m * np.pi, x) * np.sin(n * np.pi * y) * np.exp(-l2 * t)
                 i += 1
-        return ret
+        return ret[:, np.newaxis]
     return f
 
 
@@ -54,9 +65,12 @@ def translate_func_2d(func):
     return f
     
 
+def boundary_term(model, Xc, cfg):
+    U = model(Xc)
+    return [U]
 
 #@tf.function
-def net_U1(model, Xc, cfg):
+def pde_term(model, Xc, cfg):
     #Xc = tf.concat([self.xc, self.yc], 1)
     #Xc = self.preprocess(Xc)
     x = Xc[:, 0][:, tf.newaxis]
@@ -88,12 +102,12 @@ def net_U1(model, Xc, cfg):
     dt = cfg['dt']
     F = D * (Uxx + Uyy)
     U0_pde = U_net - dt * tf.matmul(F, IRK)# (N, q) * (q+1, q)T -> (N, q+1)
-    return U0_pde
+    return [U0_pde]
 
 
 def train(cfg):
 
-    func = func2(cfg['c'], cfg['D'])
+    func = cfg['solution']
     func_init = translate_func_2d(func)
     
     #wiki
@@ -111,20 +125,20 @@ def train(cfg):
     cond_0 = condition.dirichlet(shapes_i, func_init, cfg['N0'], 1)
 
     #pinn = solver.PINN(net_U0, cond_b, cond_0, cfg)
-    pinn = solver.PINN(net_U1, cond_b, cond_0, cfg)
+    pinn = solver.PINN(pde_term, boundary_term, cond_b, cond_0, cfg)
     pinn.train()
     #pinn.train_order2()
 
-    pinn.save(cfg['path2save'])
+    pinn.save()
 
 
 def evaluate(cfg):
     
-    func = func2(cfg['c'], cfg['D'])
+    func = cfg['solution']
     func_init = translate_func_2d(func)
 
     
-    pinn = solver.PINN(net_U1, None, None, cfg)
+    pinn = solver.PINN(pde_term, boundary_term, None, None, cfg)
 
     N_test = 200
     space_test = sampler.Rectangle([0, 0], [1, 1], 0.0)
@@ -146,15 +160,8 @@ def evaluate(cfg):
     print('y_ErrMax', y_ErrMax)
 
 
-    import pylab as pl
-    import shutil
-    path = './result'
-    if os.path.isdir(path):
-        shutil.rmtree(path + '/')
-        os.mkdir(path)
-    else:
-        os.mkdir(path)
-
+    util.delete_files(cfg['path2save'] + '*.png')
+    
     pl.figure()
     for loop in range(0, cfg['q'], cfg['q']//5):
 
@@ -177,29 +184,93 @@ def evaluate(cfg):
         #pl.show()
 
         fname = str(loop)
-        fname = './result/' + '0' * (5 - len(fname)) + fname + '.png'
+        fname = cfg['path2save'] + '0' * (5 - len(fname)) + fname + '.png'
         pl.savefig(fname)
+
+
 
 import scheduler
 def get_config1():
     
     cfg = {}
+    cfg['c'] = c = 0.0
+    cfg['D'] = D = 8.0
+    cfg['solution'] = func1(cfg['c'], cfg['D'])
+    #cfg['cfg'] = func2(cfg['c'], cfg['D'])
+
+
     #cfg['epoch'] = 5000000
     cfg['epoch'] = 300000
 
     #scheduler = scheduler.step2
     sch_function = scheduler.step1
-    #sch_function = scheduler.const(1e-4)
-    sch_function = scheduler.const(1e-5)
+    sch_function = scheduler.const(1e-4)
+    #sch_function = scheduler.const(1e-5)
+    #sch_function = scheduler.const(1e-2)
     #cfg['optimizer'] = optimizers.SGD(learning_rate=scheduler(0), momentum=0.9)
     cfg['optimizer'] = optimizers.Adam(learning_rate=sch_function(0))
     #cfg['optimizer'] = optimizers.Adamax(learning_rate=scheduler(0))
     cfg['scheduler'] = sch_function
 
-    cfg['q'] = 100
+    #cfg['q'] = 100
+    cfg['q'] = 500
     #cfg['layers'] = [2, 50, 50, cfg['q']+1]
-    cfg['layers'] = [2, 50, 50, 50, cfg['q']+1]
-    #cfg['layers'] = [2, 50, 50, 50, 50, 50, cfg['q']+1]
+    #cfg['layers'] = [2, 50, 50, 50, cfg['q']+1]
+    cfg['layers'] = [2, 50, 50, 50, 50, 50, cfg['q']+1]
+    #cfg['mode'] = 'fst'
+    cfg['mode'] = 'ctn'
+
+    cfg['N0'] = 25000
+    cfg['Nb'] = 20000
+    cfg['N0'] = 2500
+    cfg['Nb'] = 200
+    cfg['dt'] = 1e-3
+    #cfg['dt'] = 1e-4
+    #cfg['q'] = 500
+    #cfg['q'] = 20
+    
+    
+    cfg['IRK'], cfg['IRK_time'] = util.get_times(cfg['q'], cfg['dt'])
+    cfg['IRK'] = tf.constant(cfg['IRK'])
+    cfg['path2save'] = './result/diffusion/'
+    cfg['fname_model'] = 'network.h5'
+
+    path = './result/'
+    util.mkdir(path)
+    util.mkdir(cfg['path2save'])
+
+    
+    return cfg
+    
+
+
+def get_config2():
+    
+    cfg = {}
+    cfg['c'] = c = 0.0
+    cfg['D'] = D = 8.0
+    cfg['solution'] = func1(cfg['c'], cfg['D'])
+    #cfg['cfg'] = func2(cfg['c'], cfg['D'])
+
+
+    #cfg['epoch'] = 5000000
+    cfg['epoch'] = 300000
+
+    #scheduler = scheduler.step2
+    sch_function = scheduler.step1
+    sch_function = scheduler.const(1e-4)
+    #sch_function = scheduler.const(1e-5)
+    #sch_function = scheduler.const(1e-2)
+    #cfg['optimizer'] = optimizers.SGD(learning_rate=scheduler(0), momentum=0.9)
+    cfg['optimizer'] = optimizers.Adam(learning_rate=sch_function(0))
+    #cfg['optimizer'] = optimizers.Adamax(learning_rate=scheduler(0))
+    cfg['scheduler'] = sch_function
+
+    #cfg['q'] = 100
+    cfg['q'] = 500
+    #cfg['layers'] = [2, 50, 50, cfg['q']+1]
+    #cfg['layers'] = [2, 50, 50, 50, cfg['q']+1]
+    cfg['layers'] = [2, 50, 50, 50, 50, 50, cfg['q']+1]
     cfg['mode'] = 'fst'
     #cfg['mode'] = 'ctn'
 
@@ -212,18 +283,18 @@ def get_config1():
     #cfg['q'] = 500
     #cfg['q'] = 20
     
-
-    cfg['c'] = c = 0.0
-    cfg['D'] = D = 8.0
+    
     cfg['IRK'], cfg['IRK_time'] = util.get_times(cfg['q'], cfg['dt'])
     cfg['IRK'] = tf.constant(cfg['IRK'])
-    #cfg['path2save'] = './result/network.h5'
-    cfg['path2save'] = './model/network.h5'
+    cfg['path2save'] = './result/diffusion/'
+    cfg['fname_model'] = 'network.h5'
+
+    path = './result/'
+    util.mkdir(path)
+    util.mkdir(cfg['path2save'])
 
     
-
     return cfg
-    
 
 if __name__ == '__main__':
 
@@ -234,10 +305,9 @@ if __name__ == '__main__':
 
     cfg = get_config1()
     if cfg['mode'] == 'fst':
-        #cfg['network'] = network.get_linear(cfg['layers'])
         cfg['network'] = network.get_linear2(cfg['layers'])
     elif cfg['mode'] == 'ctn':
-        cfg['network'] = keras.models.load_model(cfg['path2save'])
+        cfg['network'] = keras.models.load_model(cfg['path2save'] + cfg['fname_model'])
     cfg['network'].summary()
 
     train(cfg)

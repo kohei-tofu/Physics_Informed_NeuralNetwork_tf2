@@ -50,6 +50,7 @@ class dirichlet(base_condition):
             
             uv_list = self.u_func(collocation)
             
+            
         elif len(self.u_func) == len(shps):
 
             uv_list = []
