@@ -215,7 +215,7 @@ def get_config1(args):
     #cfg['layers'] = [2, 50, 50, 50, cfg['q']+1]
     cfg['layers'] = [2, 50, 50, 50, 50, 50, cfg['q']+1]
     #cfg['mode'] = 'fst'
-    cfg['mode'] = 'ctn'
+    cfg['mode'] = args.mode
 
     cfg['N0'] = 25000
     cfg['Nb'] = 20000
@@ -252,8 +252,8 @@ def get_config2(args):
     cfg['epoch'] = args.epoch
 
     #scheduler = scheduler.step2
-    sch_function = scheduler.step([2000, 4000], [1e-3, 1e-4, 1e-5])
-    sch_function = scheduler.const(1e-4)
+    sch_function = scheduler.step([5000, 14000], [1e-3, 1e-4, 1e-5])
+    #sch_function = scheduler.const(1e-4)
     #sch_function = scheduler.const(1e-5)
     #sch_function = scheduler.const(1e-2)
     #cfg['optimizer'] = optimizers.SGD(learning_rate=scheduler(0), momentum=0.9)
@@ -266,14 +266,14 @@ def get_config2(args):
     #cfg['layers'] = [2, 50, 50, cfg['q']+1]
     #cfg['layers'] = [2, 50, 50, 50, cfg['q']+1]
     cfg['layers'] = [2, 50, 50, 50, 50, 50, cfg['q']+1]
-    cfg['mode'] = 'fst'
+    cfg['mode'] = args.mode
     #cfg['mode'] = 'ctn'
 
     cfg['N0'] = 200
     cfg['Nb'] = 200
     #cfg['dt'] = 1e-3
     #cfg['dt'] = 1e-4
-    cfg['dt'] = 1e-5
+    cfg['dt'] = 1e-4
     #cfg['q'] = 500
     #cfg['q'] = 20
     
@@ -299,7 +299,7 @@ if __name__ == '__main__':
     
 
     parser = argparse.ArgumentParser(description='solve 2d diffusion using neural netwrok')
-    parser.add_argument('--epoch', '-EPOCH', type=int, default=20000, help='epoch')
+    parser.add_argument('--epoch', '-EPOCH', type=int, default=60000, help='epoch')
     parser.add_argument('--job', '-J', type=str, default='evaluate', help='what job are you going to do? train or evaluate')
     parser.add_argument('--mode', '-M', type=str, default='ctn', help='train from previous result')
     args = parser.parse_args()
@@ -317,6 +317,7 @@ if __name__ == '__main__':
             #cfg['network'] = network.get_linear2(cfg['layers'])
         elif cfg['mode'] == 'ctn':
             cfg['network'] = keras.models.load_model(cfg['path2save'] + cfg['fname_model'])
+            pass
         cfg['network'].summary()
 
         train(cfg)
