@@ -1,7 +1,12 @@
 
 
 
-def scheduler_step0(epoch):
+def const(lr):
+    def func(epoch): 
+        return lr
+    return func
+
+def step0(epoch):
     if epoch < 10000:
         return 1e-1
     elif epoch < 20000:
@@ -11,7 +16,7 @@ def scheduler_step0(epoch):
     else:
         return 1e-4
 
-def scheduler_step1(epoch):
+def step1(epoch):
     if epoch < 1000:
         return 1e-2
     elif epoch < 5000:
@@ -21,7 +26,7 @@ def scheduler_step1(epoch):
     else:
         return 1e-5
 
-def scheduler_step2(epoch):
+def step2(epoch):
     if epoch < 4000:
         return 2e-2
     elif epoch < 40000:

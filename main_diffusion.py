@@ -93,9 +93,6 @@ def net_U1(model, Xc, cfg):
 
 def train(cfg):
 
-    
-
-
     func = func2(cfg['c'], cfg['D'])
     func_init = translate_func_2d(func)
     
@@ -116,6 +113,8 @@ def train(cfg):
     #pinn = solver.PINN(net_U0, cond_b, cond_0, cfg)
     pinn = solver.PINN(net_U1, cond_b, cond_0, cfg)
     pinn.train()
+    #pinn.train_order2()
+
     pinn.save(cfg['path2save'])
 
 
@@ -181,20 +180,28 @@ def evaluate(cfg):
         fname = './result/' + '0' * (5 - len(fname)) + fname + '.png'
         pl.savefig(fname)
 
-import schdeuler
+import scheduler
 def get_config1():
     
     cfg = {}
     #cfg['epoch'] = 5000000
     cfg['epoch'] = 300000
 
-
     #scheduler = scheduler.step2
-    scheduler = scheduler.step1
+    sch_function = scheduler.step1
+    #sch_function = scheduler.const(1e-4)
+    sch_function = scheduler.const(1e-5)
     #cfg['optimizer'] = optimizers.SGD(learning_rate=scheduler(0), momentum=0.9)
-    cfg['optimizer'] = optimizers.Adam(learning_rate=scheduler(0))
+    cfg['optimizer'] = optimizers.Adam(learning_rate=sch_function(0))
     #cfg['optimizer'] = optimizers.Adamax(learning_rate=scheduler(0))
-    cfg['scheduler'] = scheduler
+    cfg['scheduler'] = sch_function
+
+    cfg['q'] = 100
+    #cfg['layers'] = [2, 50, 50, cfg['q']+1]
+    cfg['layers'] = [2, 50, 50, 50, cfg['q']+1]
+    #cfg['layers'] = [2, 50, 50, 50, 50, 50, cfg['q']+1]
+    cfg['mode'] = 'fst'
+    #cfg['mode'] = 'ctn'
 
     cfg['N0'] = 25000
     cfg['Nb'] = 20000
@@ -204,7 +211,7 @@ def get_config1():
     #cfg['dt'] = 1e-4
     #cfg['q'] = 500
     #cfg['q'] = 20
-    cfg['q'] = 100
+    
 
     cfg['c'] = c = 0.0
     cfg['D'] = D = 8.0
@@ -213,12 +220,7 @@ def get_config1():
     #cfg['path2save'] = './result/network.h5'
     cfg['path2save'] = './model/network.h5'
 
-    #cfg['layers'] = [2, 50, 50, cfg['q']+1]
-    cfg['layers'] = [2, 50, 50, 50, cfg['q']+1]
-    #cfg['layers'] = [2, 50, 50, 50, 50, 50, cfg['q']+1]
-    #cfg['layers'] = [2, 50, 50, 50, 50, 50, cfg['q']+1]
-    #cfg['mode'] = 'fst'
-    cfg['mode'] = 'ctn'
+    
 
     return cfg
     
